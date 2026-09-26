@@ -1,0 +1,52 @@
+{
+  "projects": [
+    {
+      "name": "Atlas onboarding refresh",
+      "owner": "Maya Chen",
+      "status": "On track",
+      "recentActivity": "Updated the first-run checklist and shared it for review.",
+      "priority": "High",
+      "summary": "Make the first week easier to navigate with clearer setup steps and helpful milestones."
+    },
+    {
+      "name": "Beacon accessibility pass",
+      "owner": "Jordan Rivera",
+      "status": "At risk",
+      "recentActivity": "Keyboard review found a few focus-order issues to resolve.",
+      "priority": "Critical",
+      "summary": "Improve keyboard and screen-reader experiences across the core dashboard flows."
+    },
+    {
+      "name": "Cedar community toolkit",
+      "owner": "Samira Patel",
+      "status": "Active",
+      "recentActivity": "Drafted a starter guide and collected early contributor feedback.",
+      "priority": "Medium",
+      "summary": "Give new contributors practical guides and reusable resources for getting involved."
+    },
+    {
+      "name": "Drift release readiness",
+      "owner": "Alex Morgan",
+      "status": "Planned",
+      "recentActivity": "Outlined the release checklist and identified the first review milestone.",
+      "priority": "Low",
+      "summary": "Bring release checks into one clear, dependable workflow for the team."
+    },
+    {
+      "name": "Ember documentation hub",
+      "owner": "Taylor Brooks",
+      "status": "Off track",
+      "recentActivity": "Content migration is waiting on a final information-architecture decision.",
+      "priority": "High",
+      "summary": "Create a welcoming home for project guides, decisions, and frequently used references."
+    },
+    {
+      "name": "Fern feedback loop",
+      "owner": "Riley Kim",
+      "status": "Complete",
+      "recentActivity": "Closed the pilot review and summarized the next-step recommendations.",
+      "priority": "Medium",
+      "summary": "Make it easier to collect, review, and act on contributor feedback."
+    }
+  ]
+}

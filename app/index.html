@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A clear, at-a-glance view of project status, ownership, and recent activity."
+    >
+    <title>Project Pulse</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="dashboard">
+      <header class="dashboard-header">
+        <div class="dashboard-heading">
+          <p class="dashboard-eyebrow">Team overview</p>
+          <h1 class="dashboard-title">Project Pulse</h1>
+          <p class="dashboard-subtitle">
+            A thoughtful snapshot of what’s moving, who’s leading, and where the team can help.
+          </p>
+        </div>
+        <p class="dashboard-updated">Illustrative sample data</p>
+      </header>
+
+      <section class="summary-grid" aria-label="Project summary">
+        <article class="summary-card">
+          <span class="summary-label">Projects in view</span>
+          <span class="summary-value" id="metric-total">—</span>
+          <span class="summary-note">Matching your current filters</span>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">On track</span>
+          <span class="summary-value" id="metric-on-track">—</span>
+          <span class="summary-note">With an on-track status</span>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Need attention</span>
+          <span class="summary-value" id="metric-at-risk">—</span>
+          <span class="summary-note">At risk or off track</span>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">High priority</span>
+          <span class="summary-value" id="metric-high-priority">—</span>
+          <span class="summary-note">High or critical priority</span>
+        </article>
+      </section>
+
+      <section aria-labelledby="projects-heading">
+        <div class="dashboard-toolbar">
+          <div class="dashboard-toolbar-heading">
+            <h2 class="section-title" id="projects-heading">Projects</h2>
+            <p class="section-caption" id="results-caption">Loading project data…</p>
+          </div>
+          <div class="filter-controls">
+            <label class="search-control">
+              <span class="visually-hidden">Search projects</span>
+              <input
+                id="project-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Search projects"
+                disabled
+              >
+            </label>
+            <label class="visually-hidden" for="status-filter">Filter by status</label>
+            <select id="status-filter" aria-label="Filter by status" disabled>
+              <option value="">All statuses</option>
+            </select>
+            <button id="clear-filters" type="button" disabled>Clear filters</button>
+          </div>
+        </div>
+        <div
+          class="project-grid"
+          id="project-grid"
+          aria-label="Projects"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div class="dashboard-state dashboard-state--loading" role="status">
+            <span class="dashboard-state-icon" aria-hidden="true">…</span>
+            <h3 class="dashboard-state-title">Loading projects</h3>
+            <p class="dashboard-state-message">Getting the latest project snapshot.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      "use strict";
+
+      const grid = document.querySelector("#project-grid");
+      const searchInput = document.querySelector("#project-search");
+      const statusFilter = document.querySelector("#status-filter");
+      const clearFiltersButton = document.querySelector("#clear-filters");
+      const resultsCaption = document.querySelector("#results-caption");
+      const metrics = {
+        total: document.querySelector("#metric-total"),
+        onTrack: document.querySelector("#metric-on-track"),
+        atRisk: document.querySelector("#metric-at-risk"),
+        highPriority: document.querySelector("#metric-high-priority"),
+      };
+      const statusStyles = new Set([
+        "on-track",
+        "active",
+        "complete",
+        "at-risk",
+        "blocked",
+        "off-track",
+        "delayed",
+        "planned",
+        "in-progress",
+      ]);
+      const priorityStyles = new Set(["high", "critical", "medium", "low"]);
+      let projects = [];
+
+      function normalized(value) {
+        return typeof value === "string" ? value.trim().toLowerCase() : "";
+      }
+
+      function normalizedStatus(value) {
+        return normalized(value).replaceAll(/\s+/g, "-");
+      }
+
+      function displayValue(value, fallback) {
+        return typeof value === "string" && value.trim() ? value.trim() : fallback;
+      }
+
+      function makeElement(tagName, className, text) {
+        const element = document.createElement(tagName);
+        if (className) element.className = className;
+        if (text !== undefined) element.textContent = text;
+        return element;
+      }
+
+      function showState(kind, title, message, actionLabel) {
+        grid.replaceChildren();
+        const state = makeElement("div", `dashboard-state dashboard-state--${kind}`);
+        state.setAttribute("role", kind === "error" ? "alert" : "status");
+
+        const icon = makeElement(
+          "span",
+          "dashboard-state-icon",
+          kind === "error" ? "!" : kind === "empty" ? "—" : "…",
+        );
+        icon.setAttribute("aria-hidden", "true");
+        state.append(
+          icon,
+          makeElement("h3", "dashboard-state-title", title),
+          makeElement("p", "dashboard-state-message", message),
+        );
+        if (actionLabel) {
+          const retryButton = makeElement("button", "", actionLabel);
+          retryButton.type = "button";
+          retryButton.addEventListener("click", loadProjects);
+          state.append(retryButton);
+        }
+        grid.append(state);
+      }
+
+      function setMetrics(visibleProjects) {
+        metrics.total.textContent = String(visibleProjects.length);
+        metrics.onTrack.textContent = String(
+          visibleProjects.filter(
+            (project) => normalizedStatus(project.status) === "on-track",
+          ).length,
+        );
+        metrics.atRisk.textContent = String(
+          visibleProjects.filter((project) => {
+            const status = normalizedStatus(project.status);
+            return status === "at-risk" || status === "off-track";
+          }).length,
+        );
+        metrics.highPriority.textContent = String(
+          visibleProjects.filter((project) => {
+            const priority = normalized(project.priority);
+            return priority === "high" || priority === "critical";
+          }).length,
+        );
+      }
+
+      function makeProjectCard(project) {
+        const card = makeElement("article", "project-card");
+        const header = makeElement("div", "project-card-header");
+        const heading = makeElement("div", "project-card-heading");
+        const title = makeElement(
+          "h3",
+          "project-card-title",
+          displayValue(project.name, "Untitled project"),
+        );
+        const badges = makeElement("div", "project-card-badges");
+        const statusText = displayValue(project.status, "Status not provided");
+        const statusBadge = makeElement("span", "status-badge", statusText);
+        const statusKey = normalizedStatus(project.status);
+        if (statusStyles.has(statusKey)) statusBadge.dataset.status = statusKey;
+        const priorityText = displayValue(project.priority, "Priority not provided");
+        const priorityBadge = makeElement("span", "priority-badge", priorityText);
+        priorityBadge.setAttribute("aria-label", `Priority: ${priorityText}`);
+        const priorityKey = normalized(project.priority);
+        if (priorityStyles.has(priorityKey)) priorityBadge.dataset.priority = priorityKey;
+
+        heading.append(title);
+        badges.append(statusBadge, priorityBadge);
+        header.append(heading, badges);
+
+        const summary = makeElement(
+          "p",
+          "project-card-summary",
+          displayValue(project.summary, "No project summary provided."),
+        );
+        const meta = makeElement("dl", "project-card-meta");
+        const ownerItem = makeElement("div", "project-meta-item");
+        const ownerLabel = makeElement("dt", "project-meta-label", "Owner");
+        const ownerName = displayValue(project.owner, "Owner not provided");
+        const ownerValue = makeElement("dd", "project-meta-value");
+        const owner = makeElement("span", "project-owner");
+        const initials = ownerName
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => Array.from(part)[0])
+          .join("")
+          .toUpperCase();
+        const avatar = makeElement("span", "owner-avatar", initials || "?");
+        avatar.setAttribute("aria-hidden", "true");
+        owner.append(avatar, document.createTextNode(ownerName));
+        ownerValue.append(owner);
+        ownerItem.append(ownerLabel, ownerValue);
+
+        const activityItem = makeElement("div", "project-meta-item");
+        const activityLabel = makeElement("dt", "project-meta-label", "Recent activity");
+        const activityValue = makeElement("dd", "project-meta-value project-activity");
+        activityValue.textContent = displayValue(
+          project.recentActivity,
+          "No recent activity provided",
+        );
+        activityItem.append(activityLabel, activityValue);
+        meta.append(ownerItem, activityItem);
+        card.append(header, summary, meta);
+        return card;
+      }
+
+      function updateDashboard() {
+        const query = normalized(searchInput.value);
+        const selectedStatus = statusFilter.value;
+        const visibleProjects = projects.filter((project) => {
+          const projectStatus = normalizedStatus(project.status) || "__missing__";
+          const matchesStatus = !selectedStatus || projectStatus === selectedStatus;
+          const searchable = [
+            project.name,
+            project.owner,
+            project.status,
+            project.recentActivity,
+            project.priority,
+            project.summary,
+          ]
+            .filter((value) => typeof value === "string")
+            .join(" ")
+            .toLowerCase();
+          return matchesStatus && searchable.includes(query);
+        });
+
+        setMetrics(visibleProjects);
+        const count = visibleProjects.length;
+        resultsCaption.textContent = `${count} ${count === 1 ? "project" : "projects"} shown`;
+        if (count === 0) {
+          showState(
+            "empty",
+            projects.length ? "No matching projects" : "No projects yet",
+            projects.length
+              ? "Try another search or clear the status filter."
+              : "There are no project records in the data file.",
+          );
+          return;
+        }
+        grid.replaceChildren(...visibleProjects.map(makeProjectCard));
+      }
+
+      function enableControls() {
+        searchInput.disabled = false;
+        statusFilter.disabled = false;
+        clearFiltersButton.disabled = false;
+      }
+
+      async function loadProjects() {
+        grid.setAttribute("aria-busy", "true");
+        searchInput.disabled = true;
+        statusFilter.disabled = true;
+        clearFiltersButton.disabled = true;
+        resultsCaption.textContent = "Loading project data…";
+        showState("loading", "Loading projects", "Getting the latest project snapshot.");
+        try {
+          const response = await fetch("project-data.json");
+          if (!response.ok) {
+            throw new Error(`Project data request failed (${response.status}).`);
+          }
+          const data = await response.json();
+          if (!data || typeof data !== "object" || !Array.isArray(data.projects)) {
+            throw new Error("Project data must contain a projects array.");
+          }
+
+          projects = data.projects.filter(
+            (project) => project !== null && typeof project === "object" && !Array.isArray(project),
+          );
+          statusFilter.replaceChildren(new Option("All statuses", ""));
+          const statusOptions = new Map();
+          for (const project of projects) {
+            const label = displayValue(project.status, "");
+            const key = normalizedStatus(label) || "__missing__";
+            if (statusOptions.has(key)) continue;
+            statusOptions.set(key, label || "Status not provided");
+            statusFilter.add(new Option(label || "Status not provided", key));
+          }
+          enableControls();
+          grid.setAttribute("aria-busy", "false");
+          updateDashboard();
+        } catch (error) {
+          projects = [];
+          setMetrics([]);
+          resultsCaption.textContent = "Project data could not be loaded.";
+          grid.setAttribute("aria-busy", "false");
+          showState(
+            "error",
+            "Unable to load projects",
+            error instanceof Error
+              ? `${error.message} Check that project-data.json is available, then try again.`
+              : "An unexpected error occurred. Check project-data.json, then try again.",
+            "Try again",
+          );
+        }
+      }
+
+      searchInput.addEventListener("input", updateDashboard);
+      statusFilter.addEventListener("change", updateDashboard);
+      clearFiltersButton.addEventListener("click", () => {
+        searchInput.value = "";
+        statusFilter.value = "";
+        updateDashboard();
+        searchInput.focus();
+      });
+      loadProjects();
+    </script>
+  </body>
+</html>
